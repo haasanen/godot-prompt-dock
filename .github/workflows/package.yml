@@ -1,0 +1,47 @@
+name: Package and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile-check with headless Godot
+        run: |
+          GODOT=4.7.2-stable
+          curl -sL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT}/Godot_v${GODOT}_linux.x86_64.zip"
+          unzip -q godot.zip
+          chmod +x Godot_v4.7.2-stable_linux.x86_64
+          mkdir -p .check
+          printf 'config/name="check"\n[global]\n\neditor_plugins=["res://addons/prompt_dock/plugin.cfg"]\n' > .check/project.godot
+          cp -r godot/addons .check/addons
+          cd .check
+          ERRS=$(../Godot_v4.7.2-stable_linux.x86_64 --headless --import . 2>&1 | grep -iE "SCRIPT ERROR|Parse Error" || true)
+          if [ -n "$ERRS" ]; then echo "$ERRS"; exit 1; fi
+          echo "compile check clean"
+
+      - name: Zip the addon
+        run: |
+          cd godot
+          zip -r ../prompt-dock.zip addons/prompt_dock
+          cd ..
+          sha256sum prompt-dock.zip > prompt-dock.zip.sha256
+          unzip -l prompt-dock.zip
+
+      - name: Publish release asset
+        run: |
+          TAG=build-${GITHUB_SHA::7}
+          gh release create "$TAG" \
+            --title "Prompt Dock ${GITHUB_REF_NAME} ($TAG)" \
+            --notes "Godot editor addon. Install: unzip into Godot's editor_data/addons/ and enable as a Global Plugin (Editor -> Manage Editor Extensions). See README." \
+            prompt-dock.zip prompt-dock.zip.sha256
+        env:
+          GH_TOKEN: ${{ github.token }}
