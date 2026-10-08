@@ -72,7 +72,12 @@ func _list_files(path: String) -> String:
 			if dir.current_is_dir():
 				out.append({"path": full + "/", "dir": true})
 			else:
-				out.append({"path": full, "size": dir.get_size(f)})
+				var size := -1
+				var fa := FileAccess.open(full, FileAccess.READ)
+				if fa != null:
+					size = fa.get_length()
+					fa.close()
+				out.append({"path": full, "size": size})
 		f = dir.get_next()
 	dir.list_dir_end()
 	return JSON.stringify({"files": out.slice(0, 500)})
