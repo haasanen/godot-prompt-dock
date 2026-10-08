@@ -4,10 +4,16 @@ An OpenCode-style assistant that lives in a Godot bottom panel. It talks to any
 OpenAI-compatible endpoint (tested against a local [Strata](https://github.com/Niko1221/Strata)
 server — no cloud, no API key needed) and can act on the live editor:
 
-- **read / write project files** (writes always ask for confirmation)
+- **read / write project files** (writes always ask for confirmation, and are
+  undoable with Ctrl+Z)
+- **structured scene edits** — add/remove nodes, set properties — routed
+  through the editor's undo manager, so every change is Ctrl+Z-able
 - **run GDScript inside the running editor process** (with confirmation) —
-  structured scene edits, resource inspection, anything `EditorScript` can do
+  resource inspection, batch ops, anything `EditorScript` can do
 - **see what you're looking at**: current scene tree, selected nodes, live state
+- **project index**: one call maps every script (class + function signatures)
+  and scene (node skeleton) so the model understands your project immediately
+- **streamed replies**: answers appear token by token, reasoning shown live
 
 No leaving the editor to prompt.
 
@@ -41,16 +47,31 @@ Settings are saved per user (`user://prompt_dock.cfg`), not per project.
 
 ## How it works
 
-The dock runs a tool loop: your message goes to the model with five tools;
+The dock runs a tool loop: your message goes to the model with seven tools;
 the model calls tools; results are fed back until it answers.
 
 | Tool | Mutates? | Notes |
 |---|---|---|
-| `list_files` | no | project file listing |
+| `get_project_index` | no | whole-project map (scripts, scenes, settings) |
+| `list_files` | no | recursive project file listing |
 | `read_file` | no | res:// / user:// text files |
-| `write_file` | **yes** | confirmation dialog first |
+| `write_file` | **yes** | confirmation dialog first; Ctrl+Z restores the old content |
+| `scene_op` | **yes** | add/remove nodes, set properties — fully undoable |
 | `run_editor_script` | **yes** | code runs in the editor process; confirmation shows the code |
 | `get_scene_context` | no | edited scene tree + selection |
+
+Chat history persists between editor restarts (`user://prompt_dock_chat.json`);
+**New chat** clears it.
+
+## Testing
+
+Two headless test scripts ship in the repo root:
+
+- `test_e2e.gd` — tool layer + live LLM round-trip + tool-calling
+- `test_stream.gd` — streaming client (deltas, reasoning, streamed tool calls)
+
+Run against a reachable OpenAI-compatible endpoint (edit the URL constant):
+`godot --headless -s res://test_e2e.gd`
 
 Everything is plain GDScript (no `.tscn`), so the whole addon is reviewable text.
 
